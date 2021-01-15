@@ -5,13 +5,13 @@ from axelrod.action import Action
 from axelrod.evolvable_player import (
     EvolvablePlayer,
     InsufficientParametersError,
-    crossover_lists,
+    crossover_dictionaries,
 )
 from axelrod.player import Player
 
 C, D = Action.C, Action.D
 
-def gen_rnn_params(i=2, o=2, h=20, scale=.1) -> Dict:
+def gen_rnn_params(i: int = 2, o: int = 2, h: int = 20, scale: float = .1) -> Dict:
   params = {
       'Whx': np.random.normal(size=(i, h)) * scale,
       'Whh': np.random.normal(size=(h, h)) * scale,
@@ -38,7 +38,7 @@ class RNN(Player):
       "manipulates_state": False,
       "long_run_time": False,
   }
-  def __init__(self, params=None, param_gen_args=None):
+  def __init__(self, params : Dict = None, param_gen_args: Dict = None) -> None:
     Player.__init__(self)
     if params:
       self.params = params
@@ -68,3 +68,50 @@ class RNN(Player):
       return C
     else:
       return D
+
+class EvolvableRNN(RNN, EvolvablePlayer):
+    """Evolvable version of RNN."""
+    name = "EvolvableRNN"
+
+    def __init__(
+        self,
+        params : Dict = None,
+        param_gen_args: Dict = None,
+        mutation_probability: float = None,
+        mutation_distance: int = 5,
+        seed: int = None
+    ) -> None:
+        EvolvablePlayer.__init__(self, seed=seed)
+        RNN.__init__(self,
+                     params=params,
+                     param_gen_args=param_gen_args
+                     )
+        self.mutation_probability = mutation_probability
+        self.mutation_distance = mutation_distance
+        self.overwrite_init_kwargs(
+            params=params,
+            param_gen_args=param_gen_args,
+            mutation_probability=mutation_probability)
+
+    def mutate_params(self, params: Dict, mutation_probability: float, mutation_distance: int):
+      """Return new params"""
+      new_params = {}
+      for key, value in params.copy().items():
+        mask = np.random.binomial(n = 1, p = mutation_probability, size=value.shape)
+        noise = np.random.uniform(-1, 1, size=value.shape)
+        new_params[key] = value + mutation_distance * noise * mask
+      return new_params
+
+    def mutate(self):
+        params = self.mutate_params(
+          self.params,
+          self.mutation_probability,
+          self.mutation_distance
+        )
+        return self.create_new(params=params)
+
+    def crossover(self, other):
+        if other.__class__ != self.__class__:
+            raise TypeError("Crossover must be between the same player classes.")
+        params = crossover_dictionaries(self.params, other.params, self._random)
+        return self.create_new(params=params)
